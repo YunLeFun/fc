@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { ButtonName } from '../lib/nes'
-import { nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
+import { useKeyboardPreset } from '../composables/useKeyboardPreset'
 import { provideNes } from '../composables/useNes'
+import { useToast } from '../composables/useToast'
 import { useYlfAuth } from '../composables/useYlfAuth'
 import { bindKeyboard } from '../lib/control'
 import { scheduleIdleTask } from '../lib/idle'
@@ -22,8 +24,18 @@ const BUTTONS: ButtonName[] = ['LEFT', 'RIGHT', 'UP', 'DOWN', 'SELECT', 'START',
 
 const nesApp = provideNes()
 const { initAuth } = useYlfAuth()
-const unbinders: Array<() => void> = []
+const { preset, consumeMigrationNotice } = useKeyboardPreset()
+const { showToast } = useToast()
+let unbindPlayerOne: (() => void) | undefined
+let unbindPlayerTwo: (() => void) | undefined
 let cancelAuthInitialization: (() => void) | undefined
+
+const stopPresetWatcher = watch(preset, (value) => {
+  if (!nesApp.value)
+    return
+  unbindPlayerOne?.()
+  unbindPlayerOne = bindKeyboard(nesApp.value.instance, 1, value)
+})
 
 onMounted(async () => {
   await nextTick()
@@ -38,8 +50,11 @@ onMounted(async () => {
     Object.assign(globalThis, { __nesApp: app })
   app.load(DEFAULT_ROM)
   BUTTONS.forEach(name => app.bindButton(name))
-  // 玩家 1（方向键 + A/S）与玩家 2（IJKL + GHTY）键盘
-  unbinders.push(bindKeyboard(app.instance, 1), bindKeyboard(app.instance, 2))
+  // 玩家 1 使用可切换预设；玩家 2 保持 IJKL + GHTY。
+  unbindPlayerOne = bindKeyboard(app.instance, 1, preset.value)
+  unbindPlayerTwo = bindKeyboard(app.instance, 2)
+  if (consumeMigrationNotice())
+    showToast('键位已更新：WASD / 方向键 + Z/X；帮助中可切回经典', 4200)
 
   // 普通访问只在浏览器空闲时恢复轻量 BFF 会话；SSO 回跳已在 main.ts 立即处理。
   cancelAuthInitialization = scheduleIdleTask(() => void initAuth())
@@ -47,7 +62,9 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   cancelAuthInitialization?.()
-  unbinders.forEach(fn => fn())
+  stopPresetWatcher()
+  unbindPlayerOne?.()
+  unbindPlayerTwo?.()
 })
 </script>
 

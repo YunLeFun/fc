@@ -41,13 +41,17 @@ pnpm lint:fix
 
 ### 按键
 
-| 游戏按键 | 玩家 1（键盘）   | 玩家 2（键盘） |
-| -------- | ---------------- | ------------- |
-| 上下左右 | 方向键           | I / K / J / L |
-| A        | <kbd>A</kbd>     | <kbd>H</kbd>  |
-| B        | <kbd>S</kbd>     | <kbd>G</kbd>  |
-| SELECT   | <kbd>Space</kbd> | <kbd>T</kbd>  |
-| START    | <kbd>Enter</kbd> | <kbd>Y</kbd>  |
+默认使用标准预设：
+
+| 游戏按键 | 玩家 1（键盘）                     | 玩家 2（键盘） |
+| -------- | ---------------------------------- | ------------- |
+| 上下左右 | 方向键或 <kbd>W</kbd>/<kbd>A</kbd>/<kbd>S</kbd>/<kbd>D</kbd> | I / K / J / L |
+| A        | <kbd>X</kbd>                       | <kbd>H</kbd>  |
+| B        | <kbd>Z</kbd>                       | <kbd>G</kbd>  |
+| SELECT   | <kbd>Space</kbd>                   | <kbd>T</kbd>  |
+| START    | <kbd>Enter</kbd>                   | <kbd>Y</kbd>  |
+
+玩家 1 可在工具栏的“操作帮助”中切换为经典预设：方向键移动，<kbd>A</kbd>/<kbd>Q</kbd> 为 A，<kbd>S</kbd>/<kbd>O</kbd> 为 B。选择会保存在当前浏览器并立即生效；玩家 2 键位不受影响。
 
 移动端可直接触摸手柄按键，并支持 TURBO 连发键。
 
@@ -57,7 +61,7 @@ pnpm lint:fix
 - **CRT 屏幕**：扫描线、玻璃高光、像素级（`pixelated`）渲染、开机点亮动画
 - **AudioWorklet 音频**：在独立线程输出，避免占用主线程导致卡顿
 - **实用功能**：全屏、静音、重置、游戏存档 / 读档（按 ROM 区分，存于本地）
-- **双人对战**：支持玩家 1 / 玩家 2 键盘
+- **双人对战**：支持玩家 1 / 玩家 2 键盘，玩家 1 可切换标准 / 经典键位预设
 - 像素字体（Press Start 2P）、跟随系统的暗色模式（`prefers-color-scheme`）
 - PC + 移动端响应式布局与触摸优化
 - 无障碍：键盘焦点可见、`aria-label` 标签、尊重 `prefers-reduced-motion`

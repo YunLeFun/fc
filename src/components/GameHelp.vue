@@ -1,7 +1,34 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import type { KeyboardPreset } from '../lib/control'
+import { computed, shallowRef } from 'vue'
+import { useKeyboardPreset } from '../composables/useKeyboardPreset'
 
-const open = ref(false)
+const open = shallowRef(false)
+const { preset, setPreset } = useKeyboardPreset()
+
+const keyboardRows = computed(() => [
+  {
+    label: '方向',
+    playerOne: preset.value === 'standard' ? '方向键 / W A S D' : '方向键',
+    playerTwo: 'I K J L',
+  },
+  {
+    label: 'A',
+    playerOne: preset.value === 'standard' ? 'X' : 'A / Q',
+    playerTwo: 'H',
+  },
+  {
+    label: 'B',
+    playerOne: preset.value === 'standard' ? 'Z' : 'S / O',
+    playerTwo: 'G',
+  },
+  { label: 'SELECT', playerOne: 'Space', playerTwo: 'T' },
+  { label: 'START', playerOne: 'Enter', playerTwo: 'Y' },
+])
+
+function selectPreset(value: KeyboardPreset) {
+  setPreset(value)
+}
 </script>
 
 <template>
@@ -16,6 +43,29 @@ const open = ref(false)
           <h2 class="help-title">
             操作说明
           </h2>
+          <div class="help-presets" role="group" aria-label="玩家 1 键位预设">
+            <button
+              class="help-preset"
+              data-preset="standard"
+              type="button"
+              :aria-pressed="preset === 'standard'"
+              @click="selectPreset('standard')"
+            >
+              标准
+            </button>
+            <button
+              class="help-preset"
+              data-preset="classic"
+              type="button"
+              :aria-pressed="preset === 'classic'"
+              @click="selectPreset('classic')"
+            >
+              经典
+            </button>
+          </div>
+          <p class="help-preset-note">
+            标准支持 WASD；经典保留原 A/S 动作键。
+          </p>
           <table class="help-table">
             <thead>
               <tr>
@@ -25,30 +75,10 @@ const open = ref(false)
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>方向</td>
-                <td>方向键</td>
-                <td>I K J L</td>
-              </tr>
-              <tr>
-                <td>A</td>
-                <td>A</td>
-                <td>H</td>
-              </tr>
-              <tr>
-                <td>B</td>
-                <td>S</td>
-                <td>G</td>
-              </tr>
-              <tr>
-                <td>SELECT</td>
-                <td>Space</td>
-                <td>T</td>
-              </tr>
-              <tr>
-                <td>START</td>
-                <td>Enter</td>
-                <td>Y</td>
+              <tr v-for="row in keyboardRows" :key="row.label">
+                <td>{{ row.label }}</td>
+                <td>{{ row.playerOne }}</td>
+                <td>{{ row.playerTwo }}</td>
               </tr>
             </tbody>
           </table>
@@ -114,6 +144,37 @@ const open = ref(false)
   font-family: var(--font-pixel);
   font-size: 13px;
   color: var(--case-red);
+  text-align: center;
+}
+
+.help-presets {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.help-preset {
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #475569;
+  font-size: 13px;
+  cursor: pointer;
+
+  &[aria-pressed="true"] {
+    background: var(--case-red);
+    color: #fff;
+  }
+}
+
+.help-preset-note {
+  margin: 7px 0 10px;
+  color: #64748b;
+  font-size: 11px;
   text-align: center;
 }
 

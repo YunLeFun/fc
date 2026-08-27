@@ -27,7 +27,8 @@ const { message } = useToast()
   line-height: 1.4;
   letter-spacing: 0.05em;
   border-radius: 4px;
-  white-space: nowrap;
+  max-width: calc(100% - 24px);
+  text-align: center;
   pointer-events: none;
 }
 

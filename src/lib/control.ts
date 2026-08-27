@@ -1,72 +1,169 @@
 import type { ButtonKey, ControllerId, NES } from 'jsnes'
 import { Controller } from 'jsnes'
 
-/**
- * 各玩家的键盘物理按键（KeyboardEvent.code）到 NES 手柄按键的映射。
- *
- * 使用 `code` 而非已废弃的 `keyCode`，可避免不同键盘布局 / 输入法下的差异。
- * - 玩家 1：方向键 + A/S（兼容 azerty 的 Q、dvorak 的 O）+ Space/Enter
- * - 玩家 2：IJKL（方向）+ H/G（A/B）+ T/Y（Select/Start）
- */
-const PLAYER_KEYS: Record<ControllerId, Record<string, ButtonKey>> = {
-  1: {
-    ArrowUp: Controller.BUTTON_UP,
-    ArrowDown: Controller.BUTTON_DOWN,
-    ArrowLeft: Controller.BUTTON_LEFT,
-    ArrowRight: Controller.BUTTON_RIGHT,
-    KeyA: Controller.BUTTON_A, // qwerty / dvorak
-    KeyQ: Controller.BUTTON_A, // azerty
-    KeyS: Controller.BUTTON_B, // qwerty / azerty
-    KeyO: Controller.BUTTON_B, // dvorak
-    Space: Controller.BUTTON_SELECT,
-    Enter: Controller.BUTTON_START,
+export type KeyboardPreset = 'standard' | 'classic'
+
+const COMMON_PLAYER_ONE_KEYS: Record<string, ButtonKey> = {
+  ArrowUp: Controller.BUTTON_UP,
+  ArrowDown: Controller.BUTTON_DOWN,
+  ArrowLeft: Controller.BUTTON_LEFT,
+  ArrowRight: Controller.BUTTON_RIGHT,
+  Space: Controller.BUTTON_SELECT,
+  Enter: Controller.BUTTON_START,
+}
+
+/** 玩家 1 可切换的键位预设，使用 KeyboardEvent.code 表示物理键位。 */
+const PLAYER_ONE_PRESETS: Record<KeyboardPreset, Record<string, ButtonKey>> = {
+  standard: {
+    ...COMMON_PLAYER_ONE_KEYS,
+    KeyW: Controller.BUTTON_UP,
+    KeyS: Controller.BUTTON_DOWN,
+    KeyA: Controller.BUTTON_LEFT,
+    KeyD: Controller.BUTTON_RIGHT,
+    KeyX: Controller.BUTTON_A,
+    KeyZ: Controller.BUTTON_B,
   },
-  2: {
-    KeyI: Controller.BUTTON_UP,
-    KeyK: Controller.BUTTON_DOWN,
-    KeyJ: Controller.BUTTON_LEFT,
-    KeyL: Controller.BUTTON_RIGHT,
-    KeyH: Controller.BUTTON_A,
-    KeyG: Controller.BUTTON_B,
-    KeyT: Controller.BUTTON_SELECT,
-    KeyY: Controller.BUTTON_START,
+  classic: {
+    ...COMMON_PLAYER_ONE_KEYS,
+    KeyA: Controller.BUTTON_A,
+    KeyQ: Controller.BUTTON_A,
+    KeyS: Controller.BUTTON_B,
+    KeyO: Controller.BUTTON_B,
   },
 }
 
-/**
- * 将键盘事件的 `code` 解析为指定玩家的 NES 手柄按键，未匹配时返回 `undefined`。
- *
- * 抽离为纯函数以便单元测试。
- */
-export function keyToButton(code: string, player: ControllerId = 1): ButtonKey | undefined {
-  return PLAYER_KEYS[player][code]
+/** 玩家 2 保持固定键位，避免与玩家 1 的预设切换互相影响。 */
+const PLAYER_TWO_KEYS: Record<string, ButtonKey> = {
+  KeyI: Controller.BUTTON_UP,
+  KeyK: Controller.BUTTON_DOWN,
+  KeyJ: Controller.BUTTON_LEFT,
+  KeyL: Controller.BUTTON_RIGHT,
+  KeyH: Controller.BUTTON_A,
+  KeyG: Controller.BUTTON_B,
+  KeyT: Controller.BUTTON_SELECT,
+  KeyY: Controller.BUTTON_START,
+}
+
+const DIRECTION_BUTTONS = new Set<ButtonKey>([
+  Controller.BUTTON_UP,
+  Controller.BUTTON_DOWN,
+  Controller.BUTTON_LEFT,
+  Controller.BUTTON_RIGHT,
+])
+
+/** 将物理按键解析为 NES 手柄按键。 */
+export function keyToButton(
+  code: string,
+  player: ControllerId = 1,
+  preset: KeyboardPreset = 'standard',
+): ButtonKey | undefined {
+  return player === 1 ? PLAYER_ONE_PRESETS[preset][code] : PLAYER_TWO_KEYS[code]
+}
+
+function isGameInputBlocked(event: KeyboardEvent): boolean {
+  const target = event.target
+  const editableSelector = 'input, textarea, select, button, [contenteditable]:not([contenteditable="false"])'
+  if (target instanceof Element && target.closest(editableSelector))
+    return true
+  return document.querySelector('[aria-modal="true"]') !== null
 }
 
 /**
  * 为 NES 实例绑定指定玩家的全局键盘事件。
  *
- * @returns 解绑函数，便于组件卸载时清理监听
+ * 同一虚拟键可对应多个物理键；所有别名松开后才释放。相反方向同时
+ * 按下时互相抵消，避免向游戏发送非法方向组合。
  */
-export function bindKeyboard(nes: NES, player: ControllerId = 1): () => void {
-  const createHandler
-    = (action: (controller: ControllerId, button: ButtonKey) => void) =>
-      (event: KeyboardEvent) => {
-        const button = keyToButton(event.code, player)
-        if (button === undefined)
-          return
-        // 阻止方向键 / 空格滚动页面
-        event.preventDefault()
-        action(player, button)
-      }
+export function bindKeyboard(
+  nes: NES,
+  player: ControllerId = 1,
+  preset: KeyboardPreset = 'standard',
+): () => void {
+  const pressedCodes = new Map<string, ButtonKey>()
+  const buttonCounts = new Map<ButtonKey, number>()
+  const emittedButtons = new Set<ButtonKey>()
 
-  const onKeyDown = createHandler(nes.buttonDown)
-  const onKeyUp = createHandler(nes.buttonUp)
+  function desiredButtons(): Set<ButtonKey> {
+    const physicallyPressed = new Set<ButtonKey>()
+    for (const [button, count] of buttonCounts) {
+      if (count > 0)
+        physicallyPressed.add(button)
+    }
+
+    const desired = new Set<ButtonKey>(
+      [...physicallyPressed].filter(button => !DIRECTION_BUTTONS.has(button)),
+    )
+    const up = physicallyPressed.has(Controller.BUTTON_UP)
+    const down = physicallyPressed.has(Controller.BUTTON_DOWN)
+    const left = physicallyPressed.has(Controller.BUTTON_LEFT)
+    const right = physicallyPressed.has(Controller.BUTTON_RIGHT)
+    if (up !== down)
+      desired.add(up ? Controller.BUTTON_UP : Controller.BUTTON_DOWN)
+    if (left !== right)
+      desired.add(left ? Controller.BUTTON_LEFT : Controller.BUTTON_RIGHT)
+    return desired
+  }
+
+  function syncButtons() {
+    const desired = desiredButtons()
+    for (const button of emittedButtons) {
+      if (!desired.has(button)) {
+        nes.buttonUp(player, button)
+        emittedButtons.delete(button)
+      }
+    }
+    for (const button of desired) {
+      if (!emittedButtons.has(button)) {
+        nes.buttonDown(player, button)
+        emittedButtons.add(button)
+      }
+    }
+  }
+
+  function releaseAll() {
+    pressedCodes.clear()
+    buttonCounts.clear()
+    for (const button of emittedButtons)
+      nes.buttonUp(player, button)
+    emittedButtons.clear()
+  }
+
+  function onKeyDown(event: KeyboardEvent) {
+    const button = keyToButton(event.code, player, preset)
+    if (button === undefined || isGameInputBlocked(event))
+      return
+    event.preventDefault()
+    if (pressedCodes.has(event.code))
+      return
+    pressedCodes.set(event.code, button)
+    buttonCounts.set(button, (buttonCounts.get(button) ?? 0) + 1)
+    syncButtons()
+  }
+
+  function onKeyUp(event: KeyboardEvent) {
+    const button = pressedCodes.get(event.code)
+    if (button === undefined)
+      return
+    event.preventDefault()
+    pressedCodes.delete(event.code)
+    const nextCount = (buttonCounts.get(button) ?? 1) - 1
+    if (nextCount > 0)
+      buttonCounts.set(button, nextCount)
+    else
+      buttonCounts.delete(button)
+    syncButtons()
+  }
 
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
+  window.addEventListener('blur', releaseAll)
+  document.addEventListener('visibilitychange', releaseAll)
 
   return () => {
+    releaseAll()
     window.removeEventListener('keydown', onKeyDown)
     window.removeEventListener('keyup', onKeyUp)
+    window.removeEventListener('blur', releaseAll)
+    document.removeEventListener('visibilitychange', releaseAll)
   }
 }
